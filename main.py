@@ -8,6 +8,32 @@ ALLOWABLE_INT_CHARS = set('-_')
 ALLOWABLE_FLOAT_CHARS = ALLOWABLE_INT_CHARS | set('.')
 
 
+def _list_elements(title: str, existing_values: list, element_type: type) -> list:
+	init_col_layout = [
+		[sg.Input(val, enable_events=True)] for val in existing_values
+	]
+	init_col_layout.append([sg.Input(enable_events=True)])
+
+	window = sg.Window(title, [
+		[sg.Column(layout=init_col_layout, key='-ROWS-')],
+		[sg.Submit(), sg.Cancel()],
+	], finalize=True)
+
+	while True:
+		event, values = window.read()
+		if event == sg.WINDOW_CLOSED or event == 'Cancel':
+			window.close()
+			return existing_values
+
+		elif event == 'Submit':
+			window.close()
+			return [element_type(values[i]) for i in range(len(values)) if values[i] != '']
+
+		else:
+			if values[len(values) - 1] != '':
+				window.extend_layout(window['-ROWS-'], [[sg.Input(enable_events=True)]])
+
+
 class App:
 	def __init__(self) -> None:
 		self.layout = []
@@ -90,7 +116,9 @@ class App:
 			elif event.endswith('-LIST-'):
 				if event not in self.manual_values:
 					self.manual_values[event] = []
-				self.manual_values[event].append('alpha')
+
+				self.manual_values[event] = _list_elements('List', self.manual_values[event], str)
+				window.force_focus()
 
 			else:
 				break
