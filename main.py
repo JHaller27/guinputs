@@ -8,20 +8,6 @@ ALLOWABLE_INT_CHARS = set('-_')
 ALLOWABLE_FLOAT_CHARS = ALLOWABLE_INT_CHARS | set('.')
 
 
-def _list_elements(title: str, existing_values: list):
-	init_col_layout = [
-		[sg.Input(val, enable_events=True)] for val in existing_values
-	]
-	init_col_layout.append([sg.Input(enable_events=True)])
-
-	window = sg.Window(title, [
-		[sg.Column(layout=init_col_layout, key='-ROWS-')],
-		[sg.Submit(), sg.Cancel()],
-	], finalize=True)
-
-	return window
-
-
 class App:
 	def __init__(self) -> None:
 		self.layout = []
