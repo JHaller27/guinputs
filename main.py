@@ -15,6 +15,8 @@ class App:
 		self.arg_keys = []
 		self.kwarg_keys = {}
 		self.name = None
+		self.convert_funcs = {}
+		self.manual_values = {}
 
 	def register(self, func_name: str = None):
 		def _reg(func: Callable):
@@ -26,24 +28,32 @@ class App:
 			for param_name, param in signature.parameters.items():
 				default_value = None if param.default == inspect.Parameter.empty else param.default
 
-				metadata = {'type': param.annotation}
-
 				match param.annotation:
 					case builtins.str:
 						sg_key = f'-{param_name}-STR-'
-						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, metadata=metadata)])
+						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key)])
 
 					case builtins.int:
 						sg_key = f'-{param_name}-INT-'
-						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, enable_events=True, metadata=metadata)])
+						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, enable_events=True)])
 
 					case builtins.float:
 						sg_key = f'-{param_name}-FLOAT-'
-						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, enable_events=True, metadata=metadata)])
+						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, enable_events=True)])
+						self.convert_funcs[sg_key] = float
 
 					case builtins.bool:
 						sg_key = f'-{param_name}-BOOL-'
-						self.layout.append([sg.Text(param_name), sg.Checkbox(text='', default=default_value, key=sg_key, metadata=metadata)])
+						self.layout.append([sg.Text(param_name), sg.Checkbox(text='', default=default_value, key=sg_key)])
+
+					case _ if param.annotation.__origin__ == builtins.list:
+						sg_key = f'-{param_name}-LIST-'
+						self.layout.append([sg.Text(param_name), sg.Button('Edit items', key=sg_key)])
+
+					case _:
+						raise TypeError(f"Parameter '{param_name}' is an unsupported type: '{param.annotation}'")
+
+				self.convert_funcs[sg_key] = param.annotation
 
 				if param.kind == param.POSITIONAL_ONLY:
 					self.arg_keys.append(sg_key)
@@ -77,11 +87,16 @@ class App:
 					if values[event][-1] not in ALLOWABLE_FLOAT_CHARS:
 						window[event].update(values[event][:-1])
 
+			elif event.endswith('-LIST-'):
+				if event not in self.manual_values:
+					self.manual_values[event] = []
+				self.manual_values[event].append('alpha')
+
 			else:
 				break
 
-		args = (window[key].metadata['type'](values[key]) for key in self.arg_keys)
-		kwargs = {fn_key: window[sg_key].metadata['type'](values[sg_key]) for sg_key, fn_key in self.kwarg_keys.items()}
+		args = (self.convert_funcs[key](values[key]) if key in values else self.manual_values[key] for key in self.arg_keys)
+		kwargs = {fn_key: self.convert_funcs[sg_key](values[sg_key]) if sg_key in values else self.manual_values[sg_key] for sg_key, fn_key in self.kwarg_keys.items()}
 		self.func(*args, **kwargs)
 
 
@@ -89,13 +104,14 @@ if __name__ == '__main__':
 	app = App()
 
 	@app.register('GUInputs Test')
-	def cli(name: str, comma: bool = True, times: int = 1, delay: float = 0., greeting: str = 'Hello'):
+	def cli(names: list[str], comma: bool = True, times: int = 1, delay: float = 0., greeting: str = 'Hello'):
 		import time
 		for _ in range(times):
-			time.sleep(delay)
-			if not comma:
-				print(f'{greeting} {name}')
-			else:
-				print(f'{greeting}, {name}')
+			for name in names:
+				if not comma:
+					print(f'{greeting} {name}')
+				else:
+					print(f'{greeting}, {name}')
+				time.sleep(delay)
 
 	app.run()
