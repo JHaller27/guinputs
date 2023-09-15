@@ -2,6 +2,7 @@ import inspect
 import builtins
 from typing import Callable
 import PySimpleGUI as sg
+import pathlib
 
 
 ALLOWABLE_INT_CHARS = set('-_')
@@ -48,6 +49,10 @@ class App:
 					case builtins.bool:
 						sg_key = f'-{param_name}-BOOL-'
 						self.layout.append([sg.Text(param_name), sg.Checkbox(text='', default=default_value, key=sg_key, metadata=metadata)])
+
+					case pathlib.Path:
+						sg_key = f'-{param_name}-PATH-'
+						self.layout.append([sg.Text(param_name), sg.Button('Browse', key=sg_key, metadata=metadata), sg.Text(key=f'{sg_key}-DISPLAY-')])
 
 					case _ if param.annotation.__origin__ == builtins.list:
 						sg_key = f'-{param_name}-LIST-'
@@ -116,6 +121,10 @@ class App:
 			window, handle = self._list_handle(window[event].metadata['name'], event, self.convert_funcs[f'{event}_items'])
 			self.window_map[window] = handle
 
+		elif event.endswith('-PATH-'):
+			self.manual_values[event] = sg.filedialog.askopenfilename()
+			window[f'{event}-DISPLAY-'].update(value=self.manual_values[event])
+
 		else:
 			return False
 
@@ -153,10 +162,11 @@ if __name__ == '__main__':
 	app = App()
 
 	@app.register('GUInputs Test')
-	def cli(names: list[str], comma: bool = True, times: int = 1, delays: list[float] = [0.], greeting: str = 'Hello'):
+	def cli(save_to: pathlib.Path, names: list[str], comma: bool = True, times: int = 1, delays: list[float] = [0.], greeting: str = 'Hello'):
 		import time
 		from itertools import cycle
 
+		print(f'Would save to {save_to}')
 		for _ in range(times):
 			for name, delay in zip(names, cycle(delays)):
 				if not comma:
