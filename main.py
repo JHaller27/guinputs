@@ -88,6 +88,10 @@ class App:
 					self.window_map.pop(window)
 
 			if len(self.window_map) == 0:
+				# This feels like a weird pattern, like it should be handled by the _main_window_handle method
+				# But the meaning here is "if you just closed the last window" which makes sense
+				if event == sg.WIN_CLOSED:
+					return
 				break
 
 		args = (self.convert_funcs[key](values[key]) if key in values else self.manual_values[key] for key in self.arg_keys)
@@ -96,7 +100,8 @@ class App:
 
 	def _main_window_handle(self, window, event, values) -> bool:
 		if event == sg.WIN_CLOSED:
-			return False
+			# Only close the main window when it's the last window
+			return len(self.window_map) > 1
 
 		elif event.endswith('-INT-'):
 			if len(values[event]) > 0:
