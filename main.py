@@ -43,27 +43,29 @@ class App:
 			for param_name, param in signature.parameters.items():
 				default_value = None if param.default == inspect.Parameter.empty else param.default
 
+				metadata = {'name': param_name}
+
 				match param.annotation:
 					case builtins.str:
 						sg_key = f'-{param_name}-STR-'
-						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key)])
+						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, metadata=metadata)])
 
 					case builtins.int:
 						sg_key = f'-{param_name}-INT-'
-						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, enable_events=True)])
+						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, metadata=metadata, enable_events=True)])
 
 					case builtins.float:
 						sg_key = f'-{param_name}-FLOAT-'
-						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, enable_events=True)])
+						self.layout.append([sg.Text(param_name), sg.Input(default_value, key=sg_key, metadata=metadata, enable_events=True)])
 						self.convert_funcs[sg_key] = float
 
 					case builtins.bool:
 						sg_key = f'-{param_name}-BOOL-'
-						self.layout.append([sg.Text(param_name), sg.Checkbox(text='', default=default_value, key=sg_key)])
+						self.layout.append([sg.Text(param_name), sg.Checkbox(text='', default=default_value, key=sg_key, metadata=metadata)])
 
 					case _ if param.annotation.__origin__ == builtins.list:
 						sg_key = f'-{param_name}-LIST-'
-						self.layout.append([sg.Text(param_name), sg.Button('Edit items', key=sg_key)])
+						self.layout.append([sg.Text(param_name), sg.Button('Edit items', key=sg_key, metadata=metadata)])
 						self.manual_values[sg_key] = default_value or []
 						self.convert_funcs[f'{sg_key}_items'] = param.annotation.__args__[0]
 
@@ -125,7 +127,7 @@ class App:
 			if event not in self.manual_values:
 				self.manual_values[event] = []
 
-			window, handle = self._list_handle('List', event, self.convert_funcs[f'{event}_items'])
+			window, handle = self._list_handle(window[event].metadata['name'], event, self.convert_funcs[f'{event}_items'])
 			self.window_map[window] = handle
 
 		else:
