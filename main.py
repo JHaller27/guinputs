@@ -8,7 +8,7 @@ ALLOWABLE_INT_CHARS = set('-_')
 ALLOWABLE_FLOAT_CHARS = ALLOWABLE_INT_CHARS | set('.')
 
 
-def _list_elements(title: str, existing_values: list, element_type: type) -> list:
+def _list_elements(title: str, existing_values: list):
 	init_col_layout = [
 		[sg.Input(val, enable_events=True)] for val in existing_values
 	]
@@ -19,19 +19,7 @@ def _list_elements(title: str, existing_values: list, element_type: type) -> lis
 		[sg.Submit(), sg.Cancel()],
 	], finalize=True)
 
-	while True:
-		event, values = window.read()
-		if event == sg.WINDOW_CLOSED or event == 'Cancel':
-			window.close()
-			return existing_values
-
-		elif event == 'Submit':
-			window.close()
-			return [element_type(values[i]) for i in range(len(values)) if values[i] != '']
-
-		else:
-			if values[len(values) - 1] != '':
-				window.extend_layout(window['-ROWS-'], [[sg.Input(enable_events=True)]])
+	return window
 
 
 class App:
@@ -43,6 +31,7 @@ class App:
 		self.name = None
 		self.convert_funcs = {}
 		self.manual_values = {}
+		self.window_map = {}
 
 	def register(self, func_name: str = None):
 		def _reg(func: Callable):
@@ -75,6 +64,8 @@ class App:
 					case _ if param.annotation.__origin__ == builtins.list:
 						sg_key = f'-{param_name}-LIST-'
 						self.layout.append([sg.Text(param_name), sg.Button('Edit items', key=sg_key)])
+						self.manual_values[sg_key] = default_value or []
+						self.convert_funcs[f'{sg_key}_items'] = param.annotation.__args__[0]
 
 					case _:
 						raise TypeError(f"Parameter '{param_name}' is an unsupported type: '{param.annotation}'")
@@ -91,51 +82,95 @@ class App:
 		return _reg
 
 	def run(self) -> None:
-		window = sg.Window(self.name, self.layout)
-		while True:
-			event, values = window.read()
+		main_window = sg.Window(self.name, self.layout, finalize=True)
+		self.window_map[main_window] = self._main_window_handle
 
-			if event == sg.WIN_CLOSED:
-				window.close()
-				return
+		running = True
+		while running:
+			window, event, values = sg.read_all_windows()
 
-			elif event.endswith('-INT-') and len(values[event]) > 0:
-				try:
-					_ = int(values[event])
-				except ValueError:
-					if values[event][-1] not in ALLOWABLE_INT_CHARS:
-						window[event].update(values[event][:-1])
+			if window_handle := self.window_map.get(window):
+				if not window_handle(window, event, values):
+					window.close()
+					self.window_map.pop(window)
 
-			elif event.endswith('-FLOAT-') and len(values[event]) > 0:
-				try:
-					_ = float(values[event])
-				except ValueError:
-					if values[event][-1] not in ALLOWABLE_FLOAT_CHARS:
-						window[event].update(values[event][:-1])
-
-			elif event.endswith('-LIST-'):
-				if event not in self.manual_values:
-					self.manual_values[event] = []
-
-				self.manual_values[event] = _list_elements('List', self.manual_values[event], str)
-				window.force_focus()
-
-			else:
+			if len(self.window_map) == 0:
 				break
 
 		args = (self.convert_funcs[key](values[key]) if key in values else self.manual_values[key] for key in self.arg_keys)
 		kwargs = {fn_key: self.convert_funcs[sg_key](values[sg_key]) if sg_key in values else self.manual_values[sg_key] for sg_key, fn_key in self.kwarg_keys.items()}
 		self.func(*args, **kwargs)
 
+	def _main_window_handle(self, window, event, values) -> bool:
+		if event == sg.WIN_CLOSED:
+			return False
+
+		elif event.endswith('-INT-'):
+			if len(values[event]) > 0:
+				try:
+					_ = int(values[event])
+				except ValueError:
+					if values[event][-1] not in ALLOWABLE_INT_CHARS:
+						window[event].update(values[event][:-1])
+
+		elif event.endswith('-FLOAT-'):
+			if len(values[event]) > 0:
+				try:
+					_ = float(values[event])
+				except ValueError:
+					if values[event][-1] not in ALLOWABLE_FLOAT_CHARS:
+						window[event].update(values[event][:-1])
+
+		elif event.endswith('-LIST-'):
+			if event not in self.manual_values:
+				self.manual_values[event] = []
+
+			window, handle = self._list_handle('List', event, self.convert_funcs[f'{event}_items'])
+			self.window_map[window] = handle
+
+		else:
+			return False
+
+		return True
+
+	def _list_handle(self, title, list_key, element_type):
+		init_col_layout = [
+			[sg.Input(val, enable_events=True)] for val in self.manual_values[list_key]
+		]
+		init_col_layout.append([sg.Input(enable_events=True)])
+
+		window = sg.Window(title, [
+			[sg.Column(layout=init_col_layout, key='-ROWS-')],
+			[sg.Submit(), sg.Cancel()],
+		], finalize=True)
+
+		def _handle(window, event, values):
+			if event == sg.WINDOW_CLOSED or event == 'Cancel':
+				return False
+
+			elif event == 'Submit':
+				self.manual_values[list_key] = [element_type(values[i]) for i in range(len(values)) if values[i] != '']
+				return False
+
+			else:
+				if values[len(values) - 1] != '':
+					window.extend_layout(window['-ROWS-'], [[sg.Input(enable_events=True)]])
+
+			return True
+
+		return window, _handle
+
 
 if __name__ == '__main__':
 	app = App()
 
 	@app.register('GUInputs Test')
-	def cli(names: list[str], comma: bool = True, times: int = 1, delay: float = 0., greeting: str = 'Hello'):
+	def cli(names: list[str], comma: bool = True, times: int = 1, delays: list[float] = [0.], greeting: str = 'Hello'):
 		import time
+		from itertools import cycle
+
 		for _ in range(times):
-			for name in names:
+			for name, delay in zip(names, cycle(delays)):
 				if not comma:
 					print(f'{greeting} {name}')
 				else:
